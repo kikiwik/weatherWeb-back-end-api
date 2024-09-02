@@ -9,7 +9,7 @@ def get_user_by_email(db: Session, email: str):
 
 def create_user(db: Session, user: UserCreate):
     hashed_password = bcrypt.hashpw(user.password.encode('utf-8'), bcrypt.gensalt())
-    db_user = User(email=user.email, password=hashed_password.decode('utf-8'))
+    db_user = User(email=user.email, password=hashed_password.decode('utf-8'),user_id=str(uuid.uuid4())[:8])
     db.add(db_user)
     db.commit()
     db.refresh(db_user)

@@ -6,8 +6,6 @@ from .database import engine
 
 app = FastAPI()
 
-# 创建数据库表
-Base.metadata.create_all(bind=engine)
 
 # 包含用户路由
 app.include_router(users.router, prefix="/api/users", tags=["users"])
