@@ -2,9 +2,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from dao import crud, database
-from services import generate_verification_code, save_verification_code, send_email
+import services
 from .. import dependencies
 import schemas
+import asyncio
 router = APIRouter()
 
 
@@ -15,11 +16,13 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(database.Sessi
     if existing_user:
         raise HTTPException(status_code=409, detail="Email already registered")
     dependencies.password_validator(user.password)
-    verification_code = generate_verification_code()
-    save_verification_code(user.email, verification_code)
-    send_email(user.email, verification_code)
-    if not dependencies.verify_verification_code(user.email, user.verification_code):
-        raise HTTPException(status_code=400, detail="Incorrect or expired verification code")
+    code=services.create_verification_code(email=user.email)
+    asyncio.create_task(services.delete_expired_codes())
+    ret = services.send_verification_code(code=code,email=user.email)
+    if ret :
+        print("验证码发送成功")
+    else:
+        print("验证码发送失败")
     new_user = crud.create_user(db, user=user)
     token = crud.create_token(db, user_id=new_user.user_id)
     return {"user": new_user, "token": token.token}
@@ -37,14 +40,22 @@ def login_user(user: schemas.UserLoginA, db: Session = Depends(database.SessionL
     return {"user": db_user, "token": token.token}
 
 @router.post("/login/verification_code",response_model=schemas.UserResponse)
-def login_user(user: schemas.UserloginB, db: Session = Depends(database.SessionLocal)):
-    db_user = crud.get_user_by_email(db, email=user.email)
+async def login_user(user:schemas.UserloginB,db: Session = Depends(database.SessionLocal)):
+    #查找用户
+    db_user = crud.get_user_by_email(db,email=user.email)
     if not db_user:
-        raise HTTPException(status_code=404,detail="User not Found")
-    verification_code=generate_verification_code()
-    save_verification_code(email,verification_code)
-    send_email(email,verification_code)
-    if not verify_verification_code(user.email,user.verification_code):
-        raise HTTPException(status_code=400, detail="Incorrect or expired verification code")
-    token = crud.create_token(db, user_id=db_user.id)
-    return {"user": db_user, "token": token.token}
+        raise HTTPException(status_code=404,detail="User not found !")
+    code=services.create_verification_code(email=db_user.email)
+    asyncio.create_task(services.delete_expired_codes())
+    ret = services.send_verification_code(code=code,email=db_user.email)
+    if ret :
+        print("验证码发送成功")
+    else:
+        print("验证码发送失败")
+
+    if services.verify_verification_code(code=user.verification_code,email=db_user.email):
+        return {"user":db_user}
+    else:
+        raise HTTPException(status_code=401,detail="Verification code is incorrect or has expired.")
+        
+
