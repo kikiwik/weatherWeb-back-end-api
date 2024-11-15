@@ -24,8 +24,11 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(database.Sessi
     else:
         print("验证码发送失败")
     new_user = crud.create_user(db, user=user)
-    token = crud.create_token(db, user_id=new_user.user_id)
-    return {"user": new_user, "token": token.token}
+    session_token = crud.create_token(db, user_id=new_user.user_id)
+    return {"user": new_user, 
+            "token": session_token["token"],
+            "permissions": session_token["permissions"],
+            "expires_time": session_token["expires_time"]}
 
 @router.post("/login/password", response_model=schemas.UserResponse)
 def login_user(user: schemas.UserLoginA, db: Session = Depends(database.SessionLocal)):
@@ -36,8 +39,11 @@ def login_user(user: schemas.UserLoginA, db: Session = Depends(database.SessionL
         raise HTTPException(status_code=404, detail="User not found")
     if not dependencies.verify_password(user.password, db_user.password):
         raise HTTPException(status_code=401, detail="Incorrect password")
-    token = crud.create_token(db, user_id=db_user.user_id)
-    return {"user": db_user, "token": token.token}
+    session_token = crud.create_or_update_token(db, user_id=db_user.user_id)
+    return {"user": db_user,  
+            "token": session_token["token"],
+            "permissions": session_token["permissions"],
+            "expires_time": session_token["expires_time"]}
 
 @router.post("/login/verification_code",response_model=schemas.UserResponse)
 async def login_user(user:schemas.UserloginB,db: Session = Depends(database.SessionLocal)):
@@ -53,9 +59,13 @@ async def login_user(user:schemas.UserloginB,db: Session = Depends(database.Sess
     else:
         print("验证码发送失败")
 
-    if services.verify_verification_code(code=user.verification_code,email=db_user.email):
-        return {"user":db_user}
-    else:
-        raise HTTPException(status_code=401,detail="Verification code is incorrect or has expired.")
+        if services.verify_verification_code(code=user.verification_code, email=db_user.email):
+            session_token = crud.create_or_update_token(db, user_id=db_user.user_id)
+        return {"user": db_user, 
+                "token": session_token["token"],
+                "permissions": session_token["permissions"],
+                "expires_time": session_token["expires_time"]}
+    
+    raise HTTPException(status_code=401, detail="Verification code is incorrect or has expired.")
         
 
